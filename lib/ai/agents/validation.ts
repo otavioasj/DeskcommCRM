@@ -109,7 +109,7 @@ export type FollowupConfig = z.infer<typeof followupConfigSchema>;
 
 const versionShapeSchema = z
   .object({
-    system_prompt: z.string().trim().min(10).max(20000),
+    system_prompt: z.string().trim().min(10).max(40000), // sete77: era 20000; o prompt da Helena tem ~26 mil
     provider: z.enum(PROVIDERS),
     model: z.string().trim().min(1).max(120),
     /**

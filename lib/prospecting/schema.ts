@@ -107,6 +107,16 @@ export interface Prospect {
   reviews: number | null;
   emails: string[];
   socials: string[];
+  /**
+   * sete77: preenchidos pelo nosso analista externo (scraper + IA), que grava
+   * os candidatos direto no banco. O provedor nativo não os conhece — por isso
+   * opcionais. `nota` (0–10) ordena a fila; `dossie`, `gancho` e `problema`
+   * vão para o contexto da conversa (a 1ª mensagem é a saudação da Helena).
+   */
+  nota?: number | null;
+  dossie?: string | null;
+  gancho?: string | null;
+  problema?: string | null;
 }
 
 /** The existing Maps integrations normalize Brazilian numbers; never guess a foreign country. */

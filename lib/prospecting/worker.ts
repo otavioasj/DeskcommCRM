@@ -12,6 +12,7 @@ import { gerarAbordagemDeFormulario } from "@/lib/agent-engine/agent/abordagem-d
 import { llmEdgeConfigFromEnv } from "@/lib/agent-engine/edge/llm/credentials";
 import { assertServiceBoundarySupabase } from "@/lib/atendimento/origem";
 import { comSaida } from "./rodape-de-saida";
+import { saudacaoDaHelena, veioDoAnalista } from "./sete77";
 import {
   proximoEnvioDaEsteiraFria,
   tetoDiarioDaEsteiraFria,
@@ -129,7 +130,7 @@ export async function sendNextCandidate(
   }
   const queued = (
     await db.query<Candidate>(
-      "select * from prospecting_candidates where organization_id=$1 and campaign_id=$2 and status='queued' order by created_at,id limit 1",
+      "select * from prospecting_candidates where organization_id=$1 and campaign_id=$2 and status='queued' order by case when data->>'nota' ~ '^[0-9]+(\\.[0-9]+)?$' then (data->>'nota')::numeric end desc nulls last,created_at,id limit 1",
       [c.organization_id, c.id],
     )
   ).rows[0];
@@ -219,24 +220,27 @@ export async function sendNextCandidate(
     ).rows[0];
     if (!agent?.published_version_id)
       throw new ProspectingError("Agente pausado ou sem versão publicada.");
-    const generated = await gerarAbordagemDeFormulario(pool, llmEdgeConfigFromEnv(env), {
-      tenantId: c.organization_id,
-      agentId: cfg.agent_id,
-      leadId: p.contact_id,
-      instrucao: `${cfg.instruction}\nFaça uma primeira abordagem curta e transparente. Os dados vieram de pesquisa pública, não de um formulário preenchido pela pessoa. Não invente familiaridade, resultados ou interesse. Uma pergunta por vez. Critérios a confirmar durante a conversa: ${cfg.qualification}`,
-      origem: "Pesquisa de empresas",
-      // NÃO é `automacao`: a pessoa não entrou em funil nenhum. O prompt do
-      // ramo frio é o único que proíbe afirmar preenchimento — ver blocoDeModo.
-      origemDaAbordagem: "prospeccao_fria",
-      dados: {
-        Empresa: p.data.name,
-        Segmento: p.data.category ?? "",
-        Endereço: p.data.address ?? "",
-        Site: p.data.website ?? "",
-        Avaliação: String(p.data.rating ?? ""),
-        Redes: p.data.socials.join(", "),
-      },
-    });
+    // sete77: lead do nosso analista abre com a saudação da Helena, sem IA.
+    const generated = veioDoAnalista(p.data)
+      ? ({ ok: true, texto: saudacaoDaHelena(new Date()) } as const)
+      : await gerarAbordagemDeFormulario(pool, llmEdgeConfigFromEnv(env), {
+          tenantId: c.organization_id,
+          agentId: cfg.agent_id,
+          leadId: p.contact_id,
+          instrucao: `${cfg.instruction}\nFaça uma primeira abordagem curta e transparente. Os dados vieram de pesquisa pública, não de um formulário preenchido pela pessoa. Não invente familiaridade, resultados ou interesse. Uma pergunta por vez. Critérios a confirmar durante a conversa: ${cfg.qualification}`,
+          origem: "Pesquisa de empresas",
+          // NÃO é `automacao`: a pessoa não entrou em funil nenhum. O prompt do
+          // ramo frio é o único que proíbe afirmar preenchimento — ver blocoDeModo.
+          origemDaAbordagem: "prospeccao_fria",
+          dados: {
+            Empresa: p.data.name,
+            Segmento: p.data.category ?? "",
+            Endereço: p.data.address ?? "",
+            Site: p.data.website ?? "",
+            Avaliação: String(p.data.rating ?? ""),
+            Redes: p.data.socials.join(", "),
+          },
+        });
     if (!generated.ok)
       // DO CANDIDATO: o modelo não produziu texto para ESTES dados.
       throw new ProspectingError(
@@ -278,7 +282,9 @@ export async function sendNextCandidate(
         // O idioma sai de `organizations.locale`: um rodapé em português numa
         // instalação em espanhol oferece uma palavra que a pessoa não responde,
         // e o detector de opt-out só reconhece a palavra ISOLADA.
-        body: comSaida(generated.texto, locale),
+        // sete77: a saudação da Helena vai sozinha, sem o rodapé de saída
+        // (decisão do Otávio). Quem responde "pare"/"sair" segue bloqueado.
+        body: veioDoAnalista(p.data) ? generated.texto : comSaida(generated.texto, locale),
       },
     );
     const sent = ["sent", "delivered", "read"].includes(message.status);
