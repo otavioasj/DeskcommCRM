@@ -200,12 +200,13 @@ export async function POST(req: NextRequest) {
         if (
           (
             await db.query(
-              "select id from prospecting_campaigns where organization_id=$1 and status='running'",
-              [org],
+              // sete77: uma campanha rodando por NÚMERO, não por organização.
+              "select id from prospecting_campaigns where organization_id=$1 and status='running' and config->>'channel_session_id'=$2",
+              [org, c.config.channel_session_id],
             )
           ).rows.length
         )
-          throw new ProspectingError("Pause a outra campanha antes de retomar.", 409);
+          throw new ProspectingError("Pause a outra campanha deste número antes de retomar.", 409);
         await db.query(
           "update prospecting_campaigns set status='running',error=null,next_send_at=greatest(next_send_at,now()+interval '1 minute'),updated_at=now() where organization_id=$1 and id=$2",
           [org, body.id],

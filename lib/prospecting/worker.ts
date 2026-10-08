@@ -12,7 +12,13 @@ import { gerarAbordagemDeFormulario } from "@/lib/agent-engine/agent/abordagem-d
 import { llmEdgeConfigFromEnv } from "@/lib/agent-engine/edge/llm/credentials";
 import { assertServiceBoundarySupabase } from "@/lib/atendimento/origem";
 import { comSaida } from "./rodape-de-saida";
-import { saudacaoDaHelena, veioDoAnalista } from "./sete77";
+import {
+  proximoTurno,
+  saudacaoDaHelena,
+  turnoAtual,
+  turnosLigados,
+  veioDoAnalista,
+} from "./sete77";
 import {
   proximoEnvioDaEsteiraFria,
   tetoDiarioDaEsteiraFria,
@@ -58,6 +64,26 @@ export async function sendNextCandidate(
     );
     return;
   }
+  // sete77: turnos da Helena (9h e 14h, seg a sex, até 5 por turno em cada número).
+  // Só valem com PROSPECCAO_TURNOS no ambiente; sem ela, comportamento original.
+  if (turnosLigados()) {
+    const turno = turnoAtual(now);
+    const enviadosNoTurno = turno
+      ? (
+          await db.query<{ n: number }>(
+            "select count(*)::int as n from prospecting_candidates where organization_id=$1 and campaign_id=$2 and attempted_at>=$3",
+            [c.organization_id, c.id, turno.inicio],
+          )
+        ).rows[0]!.n
+      : 0;
+    if (!turno || enviadosNoTurno >= turno.max) {
+      await db.query(
+        "update prospecting_campaigns set next_send_at=$3 where organization_id=$1 and id=$2",
+        [c.organization_id, c.id, proximoTurno(turno ? turno.fim : now)],
+      );
+      return;
+    }
+  }
   const pacingState = await loadPacingState(db, c.organization_id, cfg.channel_session_id, {
     now,
     timezone: knobs.timezone,
@@ -88,11 +114,13 @@ export async function sendNextCandidate(
   const { rows: counts } = await db.query<{
     campaign: number;
     total: number;
+    numero: number;
     retry_at: Date | null;
     last_attempt: Date | null;
   }>(
-    "select count(*) filter(where campaign_id=$2)::int as campaign,count(*)::int as total,max(attempted_at) as last_attempt,min(attempted_at)+interval '24 hours' as retry_at from prospecting_candidates where organization_id=$1 and attempted_at>now()-interval '24 hours'",
-    [c.organization_id, c.id],
+    // sete77: `numero` conta só o que saiu por ESTE número (o teto frio é do número, não da organização).
+    "select count(*) filter(where p.campaign_id=$2)::int as campaign,count(*)::int as total,count(*) filter(where pc.config->>'channel_session_id'=$3)::int as numero,max(p.attempted_at) filter(where p.campaign_id=$2) as last_attempt,min(p.attempted_at)+interval '24 hours' as retry_at from prospecting_candidates p join prospecting_campaigns pc on pc.organization_id=p.organization_id and pc.id=p.campaign_id where p.organization_id=$1 and p.attempted_at>now()-interval '24 hours'",
+    [c.organization_id, c.id, cfg.channel_session_id],
   );
   const count = counts[0]!;
   // O TETO DO WARM-UP DESTA ESTEIRA. Os degraus da casa (20 no primeiro dia)
@@ -104,7 +132,7 @@ export async function sendNextCandidate(
     ? Math.floor((now.getTime() - new Date(numberActivatedAt).getTime()) / 86_400_000)
     : 0; // sem data registrada = degrau mais conservador, como o motor da casa faz
   const tetoFrio = tetoDiarioDaEsteiraFria(knobs, idadeEmDias);
-  if (tetoFrio !== null && count.total >= tetoFrio) {
+  if (tetoFrio !== null && count.numero >= tetoFrio) {
     await db.query(
       "update prospecting_campaigns set next_send_at=$3 where organization_id=$1 and id=$2",
       [c.organization_id, c.id, count.retry_at],

@@ -532,12 +532,13 @@ export async function activateCampaign(
     if (
       (
         await db.query(
-          "select id from prospecting_campaigns where organization_id=$1 and status='running'",
-          [org],
+          // sete77: uma campanha rodando por NÚMERO, não por organização.
+          "select id from prospecting_campaigns where organization_id=$1 and status='running' and config->>'channel_session_id'=$2",
+          [org, config.channel_session_id],
         )
       ).rows.length
     )
-      throw new ProspectingError("Pause a campanha atual antes de iniciar outra.", 409);
+      throw new ProspectingError("Pause a campanha atual deste número antes de iniciar outra.", 409);
     if (c.config && JSON.stringify(campaignConfigSchema.parse(c.config)) !== JSON.stringify(config))
       throw new ProspectingError(
         "A preparação já começou. Retome com a mesma configuração da campanha.",
