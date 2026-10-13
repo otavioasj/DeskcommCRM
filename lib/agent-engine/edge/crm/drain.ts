@@ -197,7 +197,12 @@ const ESPERA_DERIVACAO_MS = 4_000;
  * o cliente esperando minutos pela primeira resposta. 120s cobre o caso comum
  * de transcrição lenta (como o do Alfran) sem impor essa espera longa.
  */
-const TETO_ESPERA_DERIVACAO_MS = 120_000;
+// sete77: o Whisper local (CPU de notebook) leva ~2 min para 1 min de áudio; o teto
+// vira configurável por DERIVACAO_TETO_MS (sem a variável, os 120s originais).
+const TETO_ESPERA_DERIVACAO_MS = (() => {
+  const n = Number(process.env.DERIVACAO_TETO_MS);
+  return Number.isFinite(n) && n >= 30_000 && n <= 600_000 ? n : 120_000;
+})();
 
 type DesfechoEvento = 'processado' | 'adiar';
 
