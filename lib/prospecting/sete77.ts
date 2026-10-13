@@ -12,8 +12,20 @@ export function veioDoAnalista(data: Partial<Prospect> | null | undefined): bool
   return typeof data?.nota === "number" && Number.isFinite(data.nota);
 }
 
-/** "Oi, bom dia! Tudo bem?" / "Oi, boa tarde! Tudo bem?" pelo relógio de Brasília. */
-export function saudacaoDaHelena(agora: Date): string {
+/**
+ * Saudação pelo relógio de Brasília, sorteada entre versões naturais. Texto
+ * idêntico para muita gente desconhecida é assinatura de spam para o WhatsApp
+ * (decisão de 13/10/2026, ao subir o volume). `aleatorio` existe para o teste.
+ */
+const SAUDACOES = [
+  (p: string) => `Oi, ${p}! Tudo bem?`,
+  (p: string) => `${p[0]!.toUpperCase()}${p.slice(1)}! Tudo bem por aí?`,
+  (p: string) => `Oi, ${p}, tudo certo?`,
+  (p: string) => `Olá, ${p}! Tudo bem?`,
+  (p: string) => `${p[0]!.toUpperCase()}${p.slice(1)}, tudo bem?`,
+];
+
+export function saudacaoDaHelena(agora: Date, aleatorio: () => number = Math.random): string {
   const hora = Number(
     new Intl.DateTimeFormat("pt-BR", {
       timeZone: "America/Sao_Paulo",
@@ -22,7 +34,8 @@ export function saudacaoDaHelena(agora: Date): string {
     }).format(agora),
   );
   const periodo = hora < 12 ? "bom dia" : hora < 18 ? "boa tarde" : "boa noite";
-  return `Oi, ${periodo}! Tudo bem?`;
+  const i = Math.min(SAUDACOES.length - 1, Math.floor(aleatorio() * SAUDACOES.length));
+  return SAUDACOES[i]!(periodo);
 }
 
 /**

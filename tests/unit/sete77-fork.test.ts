@@ -34,10 +34,19 @@ describe("sete77: prospecção do analista", () => {
   });
 
   it("saúda pelo horário de Brasília", () => {
-    expect(saudacaoDaHelena(new Date("2026-10-06T12:30:00Z"))).toBe("Oi, bom dia! Tudo bem?"); // 9h30
-    expect(saudacaoDaHelena(new Date("2026-10-06T14:59:00Z"))).toBe("Oi, bom dia! Tudo bem?"); // 11h59
-    expect(saudacaoDaHelena(new Date("2026-10-06T15:00:00Z"))).toBe("Oi, boa tarde! Tudo bem?"); // 12h
-    expect(saudacaoDaHelena(new Date("2026-10-06T20:59:00Z"))).toBe("Oi, boa tarde! Tudo bem?"); // 17h59
+    expect(saudacaoDaHelena(new Date("2026-10-06T12:30:00Z"), () => 0)).toBe("Oi, bom dia! Tudo bem?"); // 9h30
+    expect(saudacaoDaHelena(new Date("2026-10-06T14:59:00Z"), () => 0)).toBe("Oi, bom dia! Tudo bem?"); // 11h59
+    expect(saudacaoDaHelena(new Date("2026-10-06T15:00:00Z"), () => 0)).toBe("Oi, boa tarde! Tudo bem?"); // 12h
+    expect(saudacaoDaHelena(new Date("2026-10-06T20:59:00Z"), () => 0)).toBe("Oi, boa tarde! Tudo bem?"); // 17h59
+  });
+
+  it("varia o texto, sempre com o período certo", () => {
+    const manha = new Date("2026-10-06T12:30:00Z");
+    const textos = new Set([0, 0.2, 0.4, 0.6, 0.99].map((r) => saudacaoDaHelena(manha, () => r)));
+    expect(textos.size).toBe(5);
+    for (const t of textos) expect(t.toLowerCase()).toContain("bom dia");
+    expect(saudacaoDaHelena(manha, () => 0.6)).toBe("Olá, bom dia! Tudo bem?");
+    expect(saudacaoDaHelena(new Date("2026-10-06T18:00:00Z"), () => 0.2)).toBe("Boa tarde! Tudo bem por aí?");
   });
 });
 
