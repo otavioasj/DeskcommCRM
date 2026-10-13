@@ -41,6 +41,14 @@ import {
   type Candidate,
 } from "./store";
 
+/**
+ * sete77: empresa que só respondeu com robô de atendimento. A Helena move o card
+ * para a etapa "Robô no atendimento" e espera uma pessoa; essa abordagem não
+ * conta na meta do dia nem na do turno (a vaga vai para a próxima empresa).
+ */
+const NAO_CAIU_EM_ROBO =
+  "not exists (select 1 from crm_leads l join crm_stages s on s.id=l.stage_id and s.organization_id=l.organization_id where l.organization_id=p.organization_id and l.id=p.lead_id and s.slug='robo-no-atendimento')";
+
 export async function sendNextCandidate(
   pool: pg.Pool,
   db: pg.PoolClient,
@@ -71,7 +79,8 @@ export async function sendNextCandidate(
     const enviadosNoTurno = turno
       ? (
           await db.query<{ n: number }>(
-            "select count(*)::int as n from prospecting_candidates where organization_id=$1 and campaign_id=$2 and attempted_at>=$3",
+            // sete77: quem só respondeu robô (card em "Robô no atendimento") não conta na meta do turno.
+            `select count(*)::int as n from prospecting_candidates p where p.organization_id=$1 and p.campaign_id=$2 and p.attempted_at>=$3 and ${NAO_CAIU_EM_ROBO}`,
             [c.organization_id, c.id, turno.inicio],
           )
         ).rows[0]!.n
@@ -119,7 +128,9 @@ export async function sendNextCandidate(
     last_attempt: Date | null;
   }>(
     // sete77: `numero` conta só o que saiu por ESTE número (o teto frio é do número, não da organização).
-    "select count(*) filter(where p.campaign_id=$2)::int as campaign,count(*)::int as total,count(*) filter(where pc.config->>'channel_session_id'=$3)::int as numero,max(p.attempted_at) filter(where p.campaign_id=$2) as last_attempt,min(p.attempted_at)+interval '24 hours' as retry_at from prospecting_candidates p join prospecting_campaigns pc on pc.organization_id=p.organization_id and pc.id=p.campaign_id where p.organization_id=$1 and p.attempted_at>now()-interval '24 hours'",
+    // sete77: `campaign` (meta do dia) não conta quem só respondeu robô; `numero` e `total`
+    // contam tudo, porque o WhatsApp viu a mensagem sair (é a proteção contra banimento).
+    `select count(*) filter(where p.campaign_id=$2 and ${NAO_CAIU_EM_ROBO})::int as campaign,count(*)::int as total,count(*) filter(where pc.config->>'channel_session_id'=$3)::int as numero,max(p.attempted_at) filter(where p.campaign_id=$2) as last_attempt,min(p.attempted_at)+interval '24 hours' as retry_at from prospecting_candidates p join prospecting_campaigns pc on pc.organization_id=p.organization_id and pc.id=p.campaign_id where p.organization_id=$1 and p.attempted_at>now()-interval '24 hours'`,
     [c.organization_id, c.id, cfg.channel_session_id],
   );
   const count = counts[0]!;
