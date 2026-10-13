@@ -439,13 +439,16 @@ export async function tickProspecting(pool: pg.Pool, admin: SupabaseClient) {
             );
           }
         }
-        const c = (
+        // sete77: uma campanha rodando POR NÚMERO, então pode haver várias na
+        // organização; cada uma anda no seu ritmo (o `sendNextCandidate` decide
+        // se já é a hora dela). Antes só a primeira era olhada e as outras paravam.
+        const rodando = (
           await db.query<Campaign>(
-            "select * from prospecting_campaigns where organization_id=$1 and status='running'",
+            "select * from prospecting_campaigns where organization_id=$1 and status='running' order by created_at,id",
             [org],
           )
-        ).rows[0];
-        if (c) {
+        ).rows;
+        for (const c of rodando) {
           try {
             await sendNextCandidate(pool, db, admin, c);
           } catch (error) {
