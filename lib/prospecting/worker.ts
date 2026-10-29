@@ -13,6 +13,7 @@ import { llmEdgeConfigFromEnv } from "@/lib/agent-engine/edge/llm/credentials";
 import { assertServiceBoundarySupabase } from "@/lib/atendimento/origem";
 import { comSaida } from "./rodape-de-saida";
 import {
+  fusoDaCampanha,
   proximoTurno,
   saudacaoDaHelena,
   turnoAtual,
@@ -81,7 +82,8 @@ export async function sendNextCandidate(
   // sete77: turnos da Helena (9h e 14h, seg a sex, até 5 por turno em cada número).
   // Só valem com PROSPECCAO_TURNOS no ambiente; sem ela, comportamento original.
   if (turnosLigados()) {
-    const turno = turnoAtual(now);
+    const fuso = fusoDaCampanha(c.name);
+    const turno = turnoAtual(now, undefined, fuso);
     const enviadosNoTurno = turno
       ? (
           await db.query<{ n: number }>(
@@ -94,7 +96,7 @@ export async function sendNextCandidate(
     if (!turno || enviadosNoTurno >= turno.max) {
       await db.query(
         "update prospecting_campaigns set next_send_at=$3 where organization_id=$1 and id=$2",
-        [c.organization_id, c.id, proximoTurno(turno ? turno.fim : now)],
+        [c.organization_id, c.id, proximoTurno(turno ? turno.fim : now, undefined, undefined, fuso)],
       );
       return;
     }
@@ -271,7 +273,7 @@ export async function sendNextCandidate(
       throw new ProspectingError("Agente pausado ou sem versão publicada.");
     // sete77: lead do nosso analista abre com a saudação da Helena, sem IA.
     const generated = veioDoAnalista(p.data)
-      ? ({ ok: true, texto: saudacaoDaHelena(new Date()) } as const)
+      ? ({ ok: true, texto: saudacaoDaHelena(new Date(), undefined, p.phone) } as const)
       : await gerarAbordagemDeFormulario(pool, llmEdgeConfigFromEnv(env), {
           tenantId: c.organization_id,
           agentId: cfg.agent_id,

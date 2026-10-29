@@ -25,14 +25,39 @@ const SAUDACOES = [
   (p: string) => `${p[0]!.toUpperCase()}${p.slice(1)}, tudo bem?`,
 ];
 
-export function saudacaoDaHelena(agora: Date, aleatorio: () => number = Math.random): string {
+/**
+ * sete77 (29/10/2026): lead da Colômbia (+57) recebe a saudação em espanhol, pelo relógio de Bogotá.
+ */
+const SALUDOS = [
+  (p: string) => `Hola, ${p}! ¿Cómo está?`,
+  (p: string) => `${p[0]!.toUpperCase()}${p.slice(1)}, ¿cómo le va?`,
+  (p: string) => `Hola, ${p}, ¿cómo está?`,
+  (p: string) => `¡${p[0]!.toUpperCase()}${p.slice(1)}! ¿Cómo va todo?`,
+  (p: string) => `Hola, ${p}. ¿Cómo está?`,
+];
+
+export function ehDaColombia(telefone: string | null | undefined): boolean {
+  return String(telefone ?? "").startsWith("+57");
+}
+
+export function saudacaoDaHelena(
+  agora: Date,
+  aleatorio: () => number = Math.random,
+  telefone?: string | null,
+): string {
+  const co = ehDaColombia(telefone);
   const hora = Number(
     new Intl.DateTimeFormat("pt-BR", {
-      timeZone: "America/Sao_Paulo",
+      timeZone: co ? "America/Bogota" : "America/Sao_Paulo",
       hour: "2-digit",
       hourCycle: "h23",
     }).format(agora),
   );
+  if (co) {
+    const periodo = hora < 12 ? "buenos días" : hora < 18 ? "buenas tardes" : "buenas noches";
+    const i = Math.min(SALUDOS.length - 1, Math.floor(aleatorio() * SALUDOS.length));
+    return SALUDOS[i]!(periodo);
+  }
   const periodo = hora < 12 ? "bom dia" : hora < 18 ? "boa tarde" : "boa noite";
   const i = Math.min(SAUDACOES.length - 1, Math.floor(aleatorio() * SAUDACOES.length));
   return SAUDACOES[i]!(periodo);
@@ -68,17 +93,22 @@ export function lerTurnos(valor: string | undefined): Turno[] {
 }
 const turnosDoAmbiente = (): Turno[] => lerTurnos(process.env.PROSPECCAO_TURNOS);
 const FUSO_MS = -3 * 3_600_000;
+/** sete77 (29/10/2026): campanha com "Colômbia" no nome roda os turnos no relógio de Bogotá (UTC−5, sem horário de verão). */
+export const FUSO_BOGOTA_MS = -5 * 3_600_000;
+export function fusoDaCampanha(nome: string | null | undefined): number {
+  return /col[oô]mbia/i.test(nome ?? "") ? FUSO_BOGOTA_MS : FUSO_MS;
+}
 
-function emBrasilia(d: Date): Date {
-  return new Date(d.getTime() + FUSO_MS); // usar só os getters UTC deste Date
+function emBrasilia(d: Date, fuso = FUSO_MS): Date {
+  return new Date(d.getTime() + fuso); // usar só os getters UTC deste Date
 }
 function diaUtil(local: Date): boolean {
   const dia = local.getUTCDay();
   return dia >= 1 && dia <= 5;
 }
-function inicioDoTurno(local: Date, hora: number): Date {
+function inicioDoTurno(local: Date, hora: number, fuso = FUSO_MS): Date {
   return new Date(
-    Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), hora) - FUSO_MS,
+    Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), hora) - fuso,
   );
 }
 
@@ -90,11 +120,12 @@ export function turnosLigados(turnos: Turno[] = turnosDoAmbiente()): boolean {
 export function turnoAtual(
   agora: Date,
   turnos: Turno[] = turnosDoAmbiente(),
+  fuso = FUSO_MS,
 ): { inicio: Date; fim: Date; max: number } | null {
-  const local = emBrasilia(agora);
+  const local = emBrasilia(agora, fuso);
   if (!diaUtil(local)) return null;
   for (const t of turnos) {
-    const inicio = inicioDoTurno(local, t.hora);
+    const inicio = inicioDoTurno(local, t.hora, fuso);
     const fim = new Date(inicio.getTime() + t.minutos * 60_000);
     if (agora >= inicio && agora < fim) return { inicio, fim, max: t.max };
   }
@@ -106,12 +137,13 @@ export function proximoTurno(
   depois: Date,
   aleatorio: () => number = Math.random,
   turnos: Turno[] = turnosDoAmbiente(),
+  fuso = FUSO_MS,
 ): Date {
   for (let dias = 0; dias < 8; dias++) {
-    const local = emBrasilia(new Date(depois.getTime() + dias * 86_400_000));
+    const local = emBrasilia(new Date(depois.getTime() + dias * 86_400_000), fuso);
     if (!diaUtil(local)) continue;
     for (const t of turnos) {
-      const inicio = inicioDoTurno(local, t.hora);
+      const inicio = inicioDoTurno(local, t.hora, fuso);
       if (inicio.getTime() >= depois.getTime())
         return new Date(inicio.getTime() + Math.floor(aleatorio() * 10 * 60_000));
     }

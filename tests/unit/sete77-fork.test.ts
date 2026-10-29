@@ -7,6 +7,7 @@ import {
   turnoAtual,
   turnosLigados,
   veioDoAnalista,
+  fusoDaCampanha,
 } from "@/lib/prospecting/sete77";
 
 describe("sete77: trava de caracteres", () => {
@@ -83,5 +84,24 @@ describe("sete77: turnos de 9h e 14h", () => {
     expect(proximoTurno(new Date("2026-10-09T19:00:00Z"), zero, T).toISOString()).toBe(
       "2026-10-12T12:00:00.000Z",
     ); // sexta 16h -> segunda 9h
+  });
+});
+
+describe("sete77: Colômbia (29/10/2026)", () => {
+  it("lead +57 recebe a saudação em espanhol pelo relógio de Bogotá", () => {
+    // 14:30 UTC = 11:30 em Brasília e 9:30 em Bogotá
+    const t = saudacaoDaHelena(new Date("2026-10-29T14:30:00Z"), () => 0, "+573155620976");
+    expect(t).toBe("Hola, buenos días! ¿Cómo está?");
+    // 16:30 UTC = 13:30 em Brasília (boa tarde) e 11:30 em Bogotá (buenos días)
+    expect(saudacaoDaHelena(new Date("2026-10-29T16:30:00Z"), () => 0, "+573155620976")).toContain("buenos días");
+    expect(saudacaoDaHelena(new Date("2026-10-29T16:30:00Z"), () => 0, "+5517999999999")).toContain("boa tarde");
+  });
+  it("campanha com Colômbia no nome usa os turnos de Bogotá", () => {
+    const turnos = lerTurnos("9-11/5,14-16/5");
+    const fuso = fusoDaCampanha("Colômbia · Barberías Bucaramanga · lote 1");
+    // 14:30 UTC = 9:30 em Bogotá: turno aberto; em Brasília seriam 11:30, fora do turno
+    expect(turnoAtual(new Date("2026-10-29T14:30:00Z"), turnos, fuso)?.inicio.toISOString()).toBe("2026-10-29T14:00:00.000Z");
+    expect(turnoAtual(new Date("2026-10-29T14:30:00Z"), turnos)).toBeNull();
+    expect(fusoDaCampanha("Prévias interior · lote 5")).toBe(-3 * 3_600_000);
   });
 });
